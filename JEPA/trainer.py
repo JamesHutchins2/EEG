@@ -113,7 +113,11 @@ def main(config):
     sampler = DistributedSampler(dataset_pretrain, rank=config.local_rank) if torch.cuda.device_count() > 1 else None 
     dataloader_eeg = DataLoader(dataset_pretrain, batch_size=config.batch_size, sampler=sampler, shuffle=sampler is None, pin_memory=True)
 
-    target_model = MaskedAutoencoder(
+    
+    
+    # encoder, and decoder unmasked data, calculating loss to original image
+    # also use the encoding as the target for the context model prediction 
+    target_model_encoder = MaskedAutoencoder(
         time_len=dataset_pretrain.data_len,
         patch_size=config.patch_size,
         embed_dim=config.embed_dim,
@@ -127,6 +131,8 @@ def main(config):
     
     
     
+    
+    #takes in a masked image, and predicts some target block of it. 
     context_model = MaskedAutoencoder(
         time_len=dataset_pretrain.data_len,
         patch_size=config.patch_size,
