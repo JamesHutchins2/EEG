@@ -3,8 +3,14 @@ import torch
 from torch.cuda.amp import GradScaler 
 import math 
 import os
+from torch.utils.data import DataLoader
+import datetime
+import matplotlib.pyplot as plt
 @torch.no_grad()
-def plot_reconstruction(model, device, dataset, output_dir, config, model_unwrapped, num_examples=3):
+def plot_reconstruction(model, device, dataset, output_dir, num_examples=3):
+    #unwrapping the model
+    
+    
     """
     Generates and saves comparison plots of ground-truth, masked ground-truth, and reconstructed EEG data,
     but with a more compact figure size.
@@ -32,9 +38,9 @@ def plot_reconstruction(model, device, dataset, output_dir, config, model_unwrap
     for ax in axs:
         sample = next(iter(dataloader))['eeg']
         sample = sample.to(device)
-        _, pred, mask = model(sample, mask_ratio=config.mask_ratio)
-        sample_with_mask = sample.to('cpu').squeeze(0)[0].numpy().reshape(-1, model_unwrapped.patch_size)
-        pred = model_unwrapped.unpatchify(pred).to('cpu').squeeze(0)[0].numpy()
+        _, pred, mask = model(sample, mask_ratio=0.8)
+        sample_with_mask = sample.to('cpu').squeeze(0)[0].numpy().reshape(-1, model.patch_size)
+        pred = model.unpatchify(pred).to('cpu').squeeze(0)[0].numpy()
         sample = sample.to('cpu').squeeze(0)[0].numpy()
         mask = mask.to('cpu').numpy().reshape(-1)
 
@@ -225,7 +231,7 @@ def adjust_learning_rate(optimizer, current_epoch,
     return lr
 
 
-def save_training_checkpoint(config, current_epoch, model, optimizer, grad_scaler, save_directory):
+def save_training_checkpoint(current_epoch, model, optimizer, grad_scaler, save_directory):
     """
     Saves the training checkpoint to a specified directory.
 
@@ -248,11 +254,11 @@ def save_training_checkpoint(config, current_epoch, model, optimizer, grad_scale
         'optimizer': optimizer.state_dict(),  # Optimizer state
         'epoch': current_epoch,  # Current epoch
         'scaler': grad_scaler.state_dict(),  # Gradient scaler state
-        'config': config,  # Training configuration
+        
     }
 
     # Define the path to the checkpoint file
-    checkpoint_file_path = os.path.join(save_directory, 'checkpoint.pth')
+    checkpoint_file_path = os.path.join(save_directory, f'checkpoint-ep-{current_epoch}.pth')
 
     # Save the checkpoint data to the file
     torch.save(checkpoint_data, checkpoint_file_path)

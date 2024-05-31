@@ -123,6 +123,7 @@ def main():
         
     MAE_VIT_MODEL.to(device)
     model = MAE_VIT_MODEL
+    model_wo_ddp = model
     if torch.cuda.device_count() > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(MAE_VIT_MODEL)
             model = DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
@@ -159,9 +160,10 @@ def main():
                                   model=model, logg_steps =log_steps, lr=learning_rate, min_lr=min_lr, num_epoch=num_epochs, warmup_epochs=warmum_epochs)
             cor_list.append(cor)
             # Save checkpoint and plot reconstruction figures periodically
-            if ep % 1 == 0 and local_rank == 0:
+            if ep % 20 == 0 and local_rank == 0:
                 save_training_checkpoint(ep, MAE_VIT_MODEL, optimizer, loss_scaler, save_dir)
-                plot_reconstruction(model, device, combined_dataset, plot_dir,  MAE_VIT_MODEL)
+                
+                plot_reconstruction(model, device, combined_dataset, plot_dir)
         mean_cor, mean_loss = validate_one_epoch(dataloader_val, device, 0.8, model, logger)
             
         val_results.append(
