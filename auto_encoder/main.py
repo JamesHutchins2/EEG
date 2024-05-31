@@ -71,7 +71,7 @@ with open(configs_path) as file:
     betas = configs['optimizer']['optimizer_parameters']['betas']
     eps = configs['optimizer']['optimizer_parameters']['eps']
     min_lr = configs['optimizer']['optimizer_parameters']['min_lr']
-    warmum_epochs = configs['optimizer']['training_parameters']['warmup_epochs']
+    warmum_epochs = configs['training_parameters']['warmup_epochs']
     
     
     
@@ -159,7 +159,7 @@ def main():
                                   model=model, logg_steps =log_steps, lr=learning_rate, min_lr=min_lr, num_epoch=num_epochs, warmup_epochs=warmum_epochs)
             cor_list.append(cor)
             # Save checkpoint and plot reconstruction figures periodically
-            if ep % 20 == 0 and local_rank == 0:
+            if ep % 1 == 0 and local_rank == 0:
                 save_training_checkpoint(ep, MAE_VIT_MODEL, optimizer, loss_scaler, save_dir)
                 plot_reconstruction(model, device, combined_dataset, plot_dir,  MAE_VIT_MODEL)
         mean_cor, mean_loss = validate_one_epoch(dataloader_val, device, 0.8, model, logger)
