@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
-
+from torch.utils.data import TensorDataset, DataLoader, random_split
 
 """Currenlty cropping the dataset for testing in line 74"""
 
@@ -70,9 +70,10 @@ class EEGDataProcessor:
     def load_raw_data(self):
         self.raw = mne.io.read_raw_brainvision(self.raw_file_path, preload=True)
         self.current_sfreq = self.raw.info["sfreq"]
-
-        self.raw.crop(tmax=2000, tmin=1950)
-        
+        try:
+            self.raw.crop(tmax=2000, tmin=1950)
+        except:
+            self.raw.crop(tmax=1700, tmin=1950)
         original_data = self.raw.get_data()
         
         num_original_channels = original_data.shape[0]
@@ -103,31 +104,73 @@ class EEGDataProcessor:
     def preprocess_raw_data(self):
         self.raw.set_eeg_reference('average', projection=True)  
         self.raw.filter(5., 95., fir_design='firwin') 
-
-    def extract_epochs(self, tmin=-0.128, tmax=0.512):
+    def extract_epochs_event_paired(self, tmin=-0.128, tmax=0.512):
         print("extracting epochs...")
         self.raw._data = self.raw._data.astype(np.float32)
         events, event_dict = mne.events_from_annotations(self.raw, event_id=None, regexp=self.event_description)
         self.epochs = mne.Epochs(self.raw, events, event_id=event_dict, tmin=tmin, tmax=tmax, preload=True)
-        print(self.raw.info)
+        print(self.raw.info) 
+    def extract_epochs(self, tmin=-0.128, tmax=0.512, preload=True):
+        epoch_length = 0.512
+        step = 0.05
+        print("extracting epochs...")
+        self.raw._data = self.raw._data.astype(np.float32)
+        print("Extracting epochs...")
+        sfreq = self.raw.info['sfreq']  # Sampling frequency
+        epoch_length_samples = int(sfreq * epoch_length)  # Epoch length in samples
+        step_samples = int(sfreq * step)  # Step size in samples
+
+        # Calculate number of epochs that can be extracted
+        n_epochs = int((len(self.raw.times) - epoch_length_samples) / step_samples) + 1
+
+        # Generate start times for each epoch
+        starts = np.arange(0, n_epochs * step_samples, step_samples)
+
+        # Initialize an array to hold the data
+        epochs_data = np.zeros((n_epochs, self.raw.get_data().shape[0], epoch_length_samples), dtype=np.float32)
+
+        # Fill the array with epoch data
+        for i, start in enumerate(starts):
+            end = start + epoch_length_samples
+            if end <= len(self.raw.times):
+                epochs_data[i] = self.raw._data[:, start:end]
+
+        # Create an MNE Epochs array without needing the events array
+        epochs_info = mne.create_info(ch_names=self.raw.info['ch_names'], sfreq=sfreq, ch_types=self.raw.get_channel_types())
+        epochs = mne.EpochsArray(epochs_data, epochs_info, tmin=0)
+
+        if preload:
+            epochs.load_data()  # Load data into memory if preload is True
+
+        self.epochs = epochs
+        
+        print(epochs)
+        return epochs
 
     def process_eeg_data(self):
         self.load_raw_data()
         self.preprocess_raw_data()
         self.extract_epochs()
-
+def create_dataset(raw_file_path, event_description, batch_size):
+    
+    eeg_processor = EEGDataProcessor(raw_file_path, event_description)
+    eeg_processor.process_eeg_data()
+    dataset = EEGDataLoader(eeg_processor.epochs)
+    
+    return dataset
 class EEGDataLoader:
-    def __init__(self, epochs):
+    def __init__(self, epochs, batch_size=32, val_split=0.1, test_split=0.1):
         eeg_data = epochs.get_data()  # Shape (n_epochs, n_channels, n_times)
         print(eeg_data.shape)
-        eeg_data = eeg_data[:, :, :512]
-        self.data_len  = 512
+        eeg_data = eeg_data[:, :, :512]  # Adjusting the time dimension to a fixed size
 
-        self.n_channels, self.n_times = eeg_data.shape[1], eeg_data.shape[2]
+        # Convert to tensor
         eeg_data_tensor = torch.tensor(eeg_data, dtype=torch.float32)
-        self.dataset = TensorDataset(eeg_data_tensor)
-        
 
+        # Create a dataset
+        dataset = TensorDataset(eeg_data_tensor)
+        self.dataset = dataset
+        
     def __len__(self):
         return len(self.dataset)
     
@@ -136,24 +179,33 @@ class EEGDataLoader:
         return {'eeg': eeg}
         
 
-def create_dataset(raw_file_path, event_description, batch_size):
-    
-    eeg_processor = EEGDataProcessor(raw_file_path, event_description)
-    eeg_processor.process_eeg_data()
-    dataset = EEGDataLoader(eeg_processor.epochs)
-    
-    return dataset
+
 
 
 if __name__ == "__main__":
-    raw_file_path = "data/sub-04/eeg/sub-04_task-rsvp_eeg.vhdr"
+    raw_file_path = "/mnt/a/MainFolder/Neural Nirvana/Data/sub-04/eeg/sub-04_task-rsvp_eeg.vhdr"
     eventDescription = 'Event/E  1'
     batch_size = 16
     train_split = 0.8
     dataset = create_dataset(raw_file_path, eventDescription, batch_size)
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    sample = next(iter(data_loader))
-    print(len(sample['eeg']))
-    data = sample['eeg'][3]
+    train_dataloader, val_dataloader, test_dataloader = dataset.get_loaders() 
+    sample = next(iter(train_dataloader))
+    
+    print(len(sample))
+    print(f"shape of the sample: {sample[0].shape}")
+    data = sample[0]
     plt.plot(data[2, :].cpu().numpy(), label='Original')
     plt.show()
+    
+    #plot from val_dataloader
+    sample = next(iter(val_dataloader))
+    data = sample[0]
+    plt.plot(data[0, :].cpu().numpy(), label='Original')
+    plt.show()
+    
+    #plot from test_dataloader
+    sample = next(iter(test_dataloader))
+    data = sample[0]
+    plt.plot(data[0, :].cpu().numpy(), label='Original')
+    plt.show()
+    

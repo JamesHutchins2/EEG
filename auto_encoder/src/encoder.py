@@ -4,7 +4,7 @@ import torch.nn as nn
 import numpy as np
 from timm.models.vision_transformer import Block
 import torch.nn.functional as F
-import utils as ut
+import src.utils as ut
 
 class PatchEmbed1D(nn.Module):
     """
@@ -19,7 +19,7 @@ class PatchEmbed1D(nn.Module):
     - embed_dim: The dimensionality of the output embedding space.
     """
     
-    def __init__(self, time_len=224, patch_size=1, in_chans=128, embed_dim=256):
+    def __init__(self, time_len=512, patch_size=1, in_chans=128, embed_dim=256):
         # Initialize the parent class (nn.Module)
         super().__init__()
         

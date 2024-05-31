@@ -3,6 +3,56 @@ import torch
 from torch.cuda.amp import GradScaler 
 import math 
 import os
+@torch.no_grad()
+def plot_reconstruction(model, device, dataset, output_dir, config, model_unwrapped, num_examples=3):
+    """
+    Generates and saves comparison plots of ground-truth, masked ground-truth, and reconstructed EEG data,
+    but with a more compact figure size.
+
+    Args:
+    - model: The trained model used for data reconstruction.
+    - device: The device on which the model is running (CPU or GPU).
+    - dataset: The dataset from which samples are taken to generate plots.
+    - output_dir: Directory where the plots will be saved.
+    - num_examples: Number of figures to generate.
+    - config: Configuration object containing model settings like mask_ratio.
+    - logger: Optional logger for saving images in a log.
+    - model_unwrapped: The original model without any wrappers like DataParallel.
+    """
+    # Make sure the ouput_dir exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
+    model.eval()
+    fig, axs = plt.subplots(num_examples, 3, figsize=(15,7.5))
+    axs[0,0].set_title('Ground-truth')
+    axs[0,1].set_title('Masked Ground-truth')
+    axs[0,2].set_title('Reconstruction')
+
+    for ax in axs:
+        sample = next(iter(dataloader))['eeg']
+        sample = sample.to(device)
+        _, pred, mask = model(sample, mask_ratio=config.mask_ratio)
+        sample_with_mask = sample.to('cpu').squeeze(0)[0].numpy().reshape(-1, model_unwrapped.patch_size)
+        pred = model_unwrapped.unpatchify(pred).to('cpu').squeeze(0)[0].numpy()
+        sample = sample.to('cpu').squeeze(0)[0].numpy()
+        mask = mask.to('cpu').numpy().reshape(-1)
+
+        cor = np.corrcoef([pred, sample])[0,1]
+        x_axis = np.arange(0, sample.shape[-1])
+        ax[0].plot(x_axis, sample)
+        s = 0
+        for x, m in zip(sample_with_mask,mask):
+            if m == 0:
+                ax[1].plot(x_axis[s:s+len(x)], x, color='#1f77b4')
+            s += len(x)
+        ax[2].plot(x_axis, pred)
+        ax[2].set_ylabel('cor: %.4f'%cor, weight = 'bold')
+        ax[2].yaxis.set_label_position("right")
+
+    fig_name = 'reconst-%s'%(datetime.datetime.now().strftime("%d-%m-%Y-%H-%M-%S"))
+    fig.savefig(os.path.join(output_dir, f'{fig_name}.png'))
+    plt.close(fig)
 
 def get_1d_sincos_pos_embed(embed_dim, length, cls_token=False):
     """
@@ -136,9 +186,15 @@ class GradScalerWithClip:
     def load_state_dict(self, state_dict):
         self.scaler.load_state_dict(state_dict)
 
+import src.config as cnf
 
-
-def adjust_learning_rate(optimizer, current_epoch, config):
+def adjust_learning_rate(optimizer, current_epoch, 
+                         num_epoch = 100, 
+                         warmup_epochs = 40, 
+                         lr = 0.001, 
+                         min_lr = 0):
+    config = cnf.Config()
+    
     """
     Adjusts the learning rate based on the current epoch, following a schedule that initially increases the learning rate linearly during a warmup phase, then decays it according to a half-cycle cosine formula.
 
@@ -151,13 +207,13 @@ def adjust_learning_rate(optimizer, current_epoch, config):
     - float: The adjusted learning rate.
     """
     # During the warmup phase, increase the learning rate linearly
-    if current_epoch < config.warmup_epochs:
-        lr = config.lr * current_epoch / config.warmup_epochs
+    if current_epoch < 40:
+        lr = 0.001 * current_epoch / 40
     else:
         # After warmup, apply a half-cycle cosine decay to the learning rate
-        lr = config.min_lr + (config.lr - config.min_lr) * 0.5 * (
+        lr = config.min_lr + (lr - min_lr) * 0.5 * (
             1. + math.cos(
-                math.pi * (current_epoch - config.warmup_epochs) / (config.num_epoch - config.warmup_epochs)
+                math.pi * (current_epoch - warmup_epochs) / (num_epoch - warmup_epochs)
             )
         )
 
