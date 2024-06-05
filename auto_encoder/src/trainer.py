@@ -43,7 +43,7 @@ def train_one_epoch(data_loader, optimizer,
     Returns:
     - Mean correlation coefficient across all batches in the epoch.
     """
-    print("Training one epoch")
+    #print("Training one epoch")
     model.train()
     total_loss, total_cor = [], []
     accum_iter = 1 # Gradient accumulation steps

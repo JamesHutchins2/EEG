@@ -165,7 +165,8 @@ def main():
                 
                 plot_reconstruction(model, device, combined_dataset, plot_dir)
         mean_cor, mean_loss = validate_one_epoch(dataloader_val, device, 0.8, model, logger)
-            
+        logger.info(f"Validation Correlation: {mean_cor}, epoch: {ep}")
+        logger.info(f"Validation Loss: {mean_loss}, epoch: {ep}")
         val_results.append(
                 {
                     'epoch': ep,
